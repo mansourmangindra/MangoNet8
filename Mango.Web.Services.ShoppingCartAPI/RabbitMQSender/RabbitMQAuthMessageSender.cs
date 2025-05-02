@@ -2,7 +2,7 @@
 using RabbitMQ.Client;
 using System.Text;
 
-namespace Mango.Services.AuthAPI.RabbitMQSender
+namespace Mango.Web.Services.ShoppingCartAPI.RabbitMQSender
 {
     public class RabbitMQAuthMessageSender : IRabbitMQAuthMessageSender
     {

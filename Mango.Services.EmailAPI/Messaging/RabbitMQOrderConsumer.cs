@@ -1,4 +1,6 @@
 ﻿
+using Mango.Services.EmailAPI.Message;
+using Mango.Services.EmailAPI.Models.Dto;
 using Mango.Services.EmailAPI.Services;
 using Microsoft.AspNetCore.Connections;
 using Newtonsoft.Json;
@@ -8,16 +10,20 @@ using System.Text;
 
 namespace Mango.Services.EmailAPI.Messaging
 {
-    public class RabbitMQAuthConsumer : BackgroundService
+    public class RabbitMQOrderConsumer : BackgroundService
     {
         private readonly IConfiguration _configuration;
         private readonly EmailService _emailService;
         private IConnection _connection;
         private IModel _channel;
-        public RabbitMQAuthConsumer(IConfiguration configuration, EmailService emailService)
+        string queueName = "";
+        private string ExchangeName = "";
+        private const string OrderCreated_EmailUpdateQueue = "EmailUpdateQueue";
+        public RabbitMQOrderConsumer(IConfiguration configuration, EmailService emailService)
         {
             _configuration = configuration;
             _emailService = emailService;
+            ExchangeName = _configuration.GetValue<string>("TopicAndQueueNames:OrderCreatedTopic");
             var factory = new ConnectionFactory
             {
                 HostName = "localhost",
@@ -26,9 +32,9 @@ namespace Mango.Services.EmailAPI.Messaging
             };
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
-            _channel.QueueDeclare(_configuration.GetValue<string>("TopicAndQueueNames:RegisterUserQueue"), 
-                false, false, false, null);
-
+            _channel.ExchangeDeclare(ExchangeName, ExchangeType.Direct);
+            _channel.QueueDeclare(OrderCreated_EmailUpdateQueue, false, false, false, null);
+            _channel.QueueBind(OrderCreated_EmailUpdateQueue, ExchangeName, "EmailUpdate");
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -39,20 +45,20 @@ namespace Mango.Services.EmailAPI.Messaging
             consumer.Received += (ch, ea) =>
             {
                 var content = Encoding.UTF8.GetString(ea.Body.ToArray());
-                String email = JsonConvert.DeserializeObject<string>(content);
-                HandleMessage(email).GetAwaiter().GetResult();
+                RewardsMessage rewardsMessage = JsonConvert.DeserializeObject<RewardsMessage>(content);
+                HandleMessage(rewardsMessage).GetAwaiter().GetResult();
 
                 _channel.BasicAck(ea.DeliveryTag, false);
             };
 
-            _channel.BasicConsume(_configuration.GetValue<string>("TopicAndQueueNames:RegisterUserQueue"),false,consumer);
+            _channel.BasicConsume(OrderCreated_EmailUpdateQueue, false,consumer);
 
             return Task.CompletedTask;
         }
 
-        private async Task HandleMessage(string email)
+        private async Task HandleMessage(RewardsMessage rewardsMessage)
         {
-            _emailService.RegisterUserEmailAndLog(email).GetAwaiter().GetResult();
+            _emailService.LogOrderPlaced(rewardsMessage).GetAwaiter().GetResult();
         }
     }
 }

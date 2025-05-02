@@ -1,4 +1,5 @@
 ﻿
+using Mango.Services.EmailAPI.Models.Dto;
 using Mango.Services.EmailAPI.Services;
 using Microsoft.AspNetCore.Connections;
 using Newtonsoft.Json;
@@ -8,13 +9,13 @@ using System.Text;
 
 namespace Mango.Services.EmailAPI.Messaging
 {
-    public class RabbitMQAuthConsumer : BackgroundService
+    public class RabbitMQCartConsumer : BackgroundService
     {
         private readonly IConfiguration _configuration;
         private readonly EmailService _emailService;
         private IConnection _connection;
         private IModel _channel;
-        public RabbitMQAuthConsumer(IConfiguration configuration, EmailService emailService)
+        public RabbitMQCartConsumer(IConfiguration configuration, EmailService emailService)
         {
             _configuration = configuration;
             _emailService = emailService;
@@ -26,7 +27,7 @@ namespace Mango.Services.EmailAPI.Messaging
             };
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
-            _channel.QueueDeclare(_configuration.GetValue<string>("TopicAndQueueNames:RegisterUserQueue"), 
+            _channel.QueueDeclare(_configuration.GetValue<string>("TopicAndQueueNames:EmailShoppingCartQueue"), 
                 false, false, false, null);
 
         }
@@ -39,20 +40,20 @@ namespace Mango.Services.EmailAPI.Messaging
             consumer.Received += (ch, ea) =>
             {
                 var content = Encoding.UTF8.GetString(ea.Body.ToArray());
-                String email = JsonConvert.DeserializeObject<string>(content);
-                HandleMessage(email).GetAwaiter().GetResult();
+                CartDto cartDto = JsonConvert.DeserializeObject<CartDto>(content);
+                HandleMessage(cartDto).GetAwaiter().GetResult();
 
                 _channel.BasicAck(ea.DeliveryTag, false);
             };
 
-            _channel.BasicConsume(_configuration.GetValue<string>("TopicAndQueueNames:RegisterUserQueue"),false,consumer);
+            _channel.BasicConsume(_configuration.GetValue<string>("TopicAndQueueNames:EmailShoppingCartQueue"), false,consumer);
 
             return Task.CompletedTask;
         }
 
-        private async Task HandleMessage(string email)
+        private async Task HandleMessage(CartDto cartDto)
         {
-            _emailService.RegisterUserEmailAndLog(email).GetAwaiter().GetResult();
+            _emailService.EmailCartAndLog(cartDto).GetAwaiter().GetResult();
         }
     }
 }
